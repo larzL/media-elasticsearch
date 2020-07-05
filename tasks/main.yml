@@ -1,0 +1,155 @@
+- name: Create ElasticSearch group
+  group:
+    name: '{{ elasticsearch_group }}'
+    system: true
+
+- name: Create ElasticSearch user
+  user:
+    name: '{{ elasticsearch_user }}'
+    group: '{{ elasticsearch_group }}'
+    comment: Elasticsearch Server
+    home: /var/lib/elasticsearch
+    shell: /sbin/nologin
+    system: true
+    createhome: false
+
+- name: Creating mount point
+  file:
+    path: /data
+    owner: deploy
+    group: deploy
+    mode: 0755
+    state: directory
+
+- name: Creates ElasticSearch data directory
+  file:
+    path: /data/elasticsearch
+    owner: elasticsearch
+    group: elasticsearch
+    mode: 0755
+    state: directory
+
+- name: HTTPS APT transport for Elasticsearch repository.
+  apt:
+    name: apt-transport-https
+    state: present
+
+- name: Add Elasticsearch apt key.
+  apt_key:
+    url: https://artifacts.elastic.co/GPG-KEY-elasticsearch
+    state: present
+
+- name: Add Elasticsearch repository.
+  apt_repository:
+    repo: 'deb https://artifacts.elastic.co/packages/{{ elasticsearch_version[0:1] }}.x/apt stable main'
+    state: present
+    update_cache: true
+  when: elasticsearch_version >= "1.7"
+
+- name: Add older version of Elasticsearch repository.
+  apt_repository:
+    repo: 'deb https://packages.elastic.co/elasticsearch/{{ elasticsearch_version[0:3] }}/debian stable main'
+    state: present
+    update_cache: true
+  when: elasticsearch_version < "1.7"
+
+- name: Install Elasticsearch.
+  package:
+    name: elasticsearch={{ elasticsearch_version }}
+    state: "{{ elasticsearch_package_state }}"
+
+- name: Ops for Elasticsearch
+  template:
+    src: elasticsearch.j2
+    dest: /etc/default/elasticsearch
+    owner: root
+    group: root
+    mode: 0644
+  notify: restart elasticsearch
+
+- name: Creates ElasticSearch plugin directory
+  file:
+    path: /usr/share/elasticsearch/plugins
+    owner: elasticsearch
+    group: elasticsearch
+    mode: 0755
+    state: directory
+
+- name: Install ElasticSearch plugins
+  elasticsearch_plugin:
+    name: "{{ item.name }}"
+    version: "{{ item.version }}"
+  with_items: "{{ ES_plugins }}"
+  tags: es_plugins
+  when: ES_plugins is defined
+
+- name: Configure Elasticsearch.
+  template:
+    src: elasticsearch.yml.j2
+    dest: /etc/elasticsearch/elasticsearch.yml
+    owner: root
+    group: root
+    mode: 0644
+  notify: restart elasticsearch
+
+- name: Configure jvm.options
+  template:
+    src: jvm.options.j2
+    dest: /etc/elasticsearch/jvm.options
+    owner: root
+    group: elasticsearch
+    mode: 0660
+  notify: restart elasticsearch
+
+- name: Force a restart if configuration has changed.
+  meta: flush_handlers
+
+- name: Creates elasticsearch.service.d directory
+  file:
+    path: /etc/systemd/system/elasticsearch.service.d
+    owner: root
+    group: root
+    mode: 0755
+    state: directory
+
+- name: Creates override.conf
+  template:
+    src: override.conf
+    dest: /etc/systemd/system/elasticsearch.service.d/override.conf
+    owner: root
+    group: root
+    mode: 0644
+
+- name: Start Elasticsearch.
+  service:
+    name: elasticsearch
+    state: "{{ elasticsearch_service_state }}"
+    enabled: "{{ elasticsearch_service_enabled }}"
+
+- name: Make sure Elasticsearch is running before proceeding.
+  wait_for:
+    host: "localhost"
+    port: "{{ elasticsearch_http_port }}"
+    delay: 3
+    timeout: 300
+
+- name: Add or modify memlock limit for Elasticsearch
+  pam_limits:
+    domain: elasticsearch
+    limit_type: "{{item.limit_type}}"
+    limit_item: "{{item.limit_item}}"
+    value: "{{item.value}}"
+  with_items:
+    - { limit_type: '-', limit_item: 'nofile', value: 65536 }
+    - { limit_type: 'soft', limit_item: 'memlock', value: unlimited }
+    - { limit_type: 'hard', limit_item: 'memlock', value: unlimited }
+
+- name: Update sysctl for Elasticsearch
+  sysctl:
+    name: "{{item.name}}"
+    value: "{{item.value}}"
+    state: present
+  with_items:
+    - { name: 'vm.max_map_count', value: '262144'}
+    - { name: 'vm.swappiness', value: '0'}
+  tags: sysctl

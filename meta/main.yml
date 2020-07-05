@@ -1,0 +1,8 @@
+galaxy_info:
+  author: Larry Li
+  description: Install and configure ElasticSearch.
+  min_ansible_version: 2.4
+  platforms:
+    - name: Ubuntu
+      versions:
+        - all

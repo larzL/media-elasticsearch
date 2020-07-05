@@ -1,0 +1,8 @@
+path:
+  data: {{ elasticsearch_path_data }}
+  logs: /var/log/elasticsearch
+network:
+  host: {{ elasticsearch_network_host }}
+http:
+  port: {{ elasticsearch_http_port }}
+{{ elasticsearch_extra_config | to_nice_yaml }}

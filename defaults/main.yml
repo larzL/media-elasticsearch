@@ -1,0 +1,23 @@
+elasticsearch_user: elasticsearch
+elasticsearch_group: "{{ elasticsearch_user }}"
+
+elasticsearch_heap_size: 4G
+elasticsearch_max_locked_mem: unlimited
+elasticsearch_max_open_files: 320
+
+elasticsearch_version: '6.8.1'
+elasticsearch_package_state: present
+
+elasticsearch_service_state: started
+elasticsearch_service_enabled: true
+
+elasticsearch_startup_sleep_time: 5
+
+elasticsearch_network_host:
+  - "{{ ansible_eth0.ipv4.address }}"
+  - localhost
+elasticsearch_http_port: 9200
+
+es_cluster: false
+
+elasticsearch_path_data: /var/lib/elasticsearch
